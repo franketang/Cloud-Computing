@@ -1,4 +1,4 @@
-README:
+README: https://docs.google.com/presentation/d/1jhv7ArriMIsu2nh6iFLSy5umvUZypNUq/edit#slide=id.p12
 
 This repository has a Java program that creates a detailed list (known as an inverted index) using the MapReduce method. The program looks at a group of text files and produces a list. This list shows each distinct word from the text files and tells us which files mention that word.
 
