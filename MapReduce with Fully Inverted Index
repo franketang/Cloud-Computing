@@ -1,46 +1,86 @@
-README: https://docs.google.com/presentation/d/1jhv7ArriMIsu2nh6iFLSy5umvUZypNUq/edit#slide=id.p12
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.StringTokenizer;
 
-This repository has a Java program that creates a detailed list (known as an inverted index) using the MapReduce method. The program looks at a group of text files and produces a list. This list shows each distinct word from the text files and tells us which files mention that word.
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Counter;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.FileSplit;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
 
-The inverted index is a commonly used list in systems that search for information. It quickly finds documents based on the words inside them. Our program uses MapReduce to make this list for a group of text files.
+public class InvertedIndex extends Configured implements Tool {
 
-The program uses the MapReduce method, which has two steps: "Map" and "Reduce".
+  public static class InvertedIndexMapper extends Mapper<Object, Text, Text, Text> {
 
-For example, with 3 files:
+    private Text word = new Text();
+    private Text location = new Text();
 
-file0: it is what it is
+    public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+      FileSplit fileSplit = (FileSplit) context.getInputSplit();
+      String filename = fileSplit.getPath().getName();
+      String line = value.toString();
 
-file1: what is it
+      StringTokenizer tokenizer = new StringTokenizer(line);
+      int index = 0;
+      while (tokenizer.hasMoreTokens()) {
+        word.set(tokenizer.nextToken().toLowerCase());
+        int fileNumber = Integer.parseInt(filename.replaceAll("[^0-9]", ""));
+        String toReduce ="("+fileNumber+","+index+")";
+        index++;
+        context.write(word, new Text(toReduce));
+      }
+    }
+  }
 
-file2: it is a banana
+  public static class InvertedIndexReducer extends Reducer<Text, Text, Text, Text> {
 
+    private Text result = new Text();
 
+    public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+      List<String> locations = new ArrayList<>();
 
+      for (Text value : values) {
+        locations.add(value.toString());
+      }
 
-![Image](https://user-images.githubusercontent.com/29631514/261885641-1020ad7d-9111-4b41-9079-8a9b9b76dcff.png)
+      result.set(locations.toString());
+      context.write(key, result);
+    }
+  }
+public int run(String[] args) throws Exception {
+    Configuration conf = getConf();
+    Job job = Job.getInstance(conf, "InvertedIndex");
+    job.setJarByClass(InvertedIndex.class);
 
+    job.setInputFormatClass(TextInputFormat.class);
+    job.setOutputFormatClass(TextOutputFormat.class);
 
-Setting Up
+    job.setMapperClass(InvertedIndexMapper.class);
+    job.setReducerClass(InvertedIndexReducer.class);
 
-Go to the project folder: cd repository-name.
-Set up the necessary files:
-Make folders: index > input.
-Add texts to files:
-file0: "it is what it is"
-file1: "what is it"
-file2: "it is a banana"
-Running the Program
+    job.setOutputKeyClass(Text.class);
+    job.setOutputValueClass(Text.class);
 
-Go back to the Hadoop directory: cd hadoop-3.3.5.
-Prepare and start Hadoop.
-Create required directories in HDFS and upload the input files.
-Compile the program and create a JAR file.
-Run the MapReduce job.
+    FileInputFormat.addInputPath(job, new Path(args[0]));
+    FileOutputFormat.setOutputPath(job, new Path(args[1]));
 
+    return job.waitForCompletion(true) ? 0 : 1;
+  }
 
-Testing
-
-You can test with your own files or change the existing ones. Just keep them in index/input.
-Post run, view the part-r-00000 file in /user/username/index/output to see the inverted index created.
-The result looks like: "output".
-Review and ensure the inverted index works as expected.
+  public static void main(String[] args) throws Exception {
+    int exitCode = ToolRunner.run(new InvertedIndex(), args);
+    System.exit(exitCode);
+  }
+}
